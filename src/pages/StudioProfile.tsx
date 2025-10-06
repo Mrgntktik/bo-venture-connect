@@ -34,8 +34,7 @@ export default function StudioProfile() {
   }
 
   const handleWhatsApp = () => {
-    const phone = studio.phone?.replace(/\D/g, '');
-    window.open(`https://wa.me/${phone}`, '_blank');
+    window.open('https://wa.me/59177360690?text=Hola', '_blank');
   };
 
   return (
