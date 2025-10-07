@@ -4,13 +4,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { register } from '@/lib/auth';
+import { register } from '@/lib/supabase-auth';
 import { useToast } from '@/hooks/use-toast';
 import heroImage from '@/assets/hero-entrepreneur.jpg';
 
 export default function Register() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     businessName: '',
     email: '',
@@ -18,22 +19,25 @@ export default function Register() {
     name: ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     
     try {
-      register(formData);
+      await register(formData);
       toast({
         title: '¡Registro exitoso!',
         description: 'Bienvenido a blvgames.bo',
       });
       navigate('/dashboard');
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'No se pudo completar el registro',
+        description: error.message || 'No se pudo completar el registro',
         variant: 'destructive',
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -94,8 +98,8 @@ export default function Register() {
                 />
               </div>
 
-              <Button type="submit" className="w-full" size="lg">
-                Crear Cuenta
+              <Button type="submit" className="w-full" size="lg" disabled={loading}>
+                {loading ? 'Creando cuenta...' : 'Crear Cuenta'}
               </Button>
 
               <p className="text-center text-sm text-muted-foreground">

@@ -4,40 +4,48 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { login } from '@/lib/auth';
+import { login, getUserRole } from '@/lib/supabase-auth';
 import { useToast } from '@/hooks/use-toast';
 import { Gamepad2 } from 'lucide-react';
 
 export default function Login() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     
-    const user = login(formData.email, formData.password);
-    
-    if (user) {
-      toast({
-        title: '¡Bienvenido!',
-        description: `Hola ${user.name}`,
-      });
+    try {
+      const { user } = await login(formData.email, formData.password);
       
-      if (user.role === 'admin') {
-        navigate('/admin');
-      } else {
-        navigate('/dashboard');
+      if (user) {
+        const role = await getUserRole(user.id);
+        
+        toast({
+          title: '¡Bienvenido!',
+          description: 'Has iniciado sesión correctamente',
+        });
+        
+        if (role === 'admin') {
+          navigate('/admin');
+        } else {
+          navigate('/dashboard');
+        }
       }
-    } else {
+    } catch (error: any) {
       toast({
         title: 'Error',
-        description: 'Email o contraseña incorrectos',
+        description: error.message || 'Email o contraseña incorrectos',
         variant: 'destructive',
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -78,17 +86,10 @@ export default function Login() {
               />
             </div>
 
-            <Button type="submit" className="w-full" size="lg">
-              Entrar
+            <Button type="submit" className="w-full" size="lg" disabled={loading}>
+              {loading ? 'Iniciando sesión...' : 'Entrar'}
             </Button>
 
-            <div className="mt-4 p-4 bg-muted rounded-lg">
-              <p className="text-sm font-medium mb-2">Usuarios de prueba:</p>
-              <div className="text-xs space-y-1 text-muted-foreground">
-                <p>• carlos@example.com / 123456</p>
-                <p>• admin@blvgames.bo / admin123</p>
-              </div>
-            </div>
 
             <p className="text-center text-sm text-muted-foreground">
               ¿No tienes una cuenta?{' '}
