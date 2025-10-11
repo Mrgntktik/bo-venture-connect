@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
-import { getCurrentUser } from '@/lib/auth';
-import { getUsers, getGames, saveGames, User, Game } from '@/lib/mockData';
+import { supabase } from '@/integrations/supabase/client';
+import { isAdmin } from '@/lib/supabase-auth';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -10,54 +10,166 @@ import { Users, Gamepad, Clock, Check, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Layout } from '@/components/Layout';
 
+interface Profile {
+  id: string;
+  name: string;
+  email?: string;
+  business_name?: string;
+}
+
+interface Game {
+  id: string;
+  title: string;
+  category: string;
+  price?: number;
+  status: string;
+  created_at: string;
+  user_id: string;
+  profiles?: Profile;
+}
+
 export default function AdminDashboard() {
-  const currentUser = getCurrentUser();
-  const [users, setUsers] = useState<User[]>([]);
+  const [isAdminUser, setIsAdminUser] = useState<boolean | null>(null);
+  const [users, setUsers] = useState<Profile[]>([]);
   const [games, setGames] = useState<Game[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'games' | 'users'>('dashboard');
+  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
-    loadData();
+    checkAdminAndLoadData();
   }, []);
 
-  const loadData = () => {
-    setUsers(getUsers().filter(u => u.role === 'creator'));
-    setGames(getGames());
+  const checkAdminAndLoadData = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.user) {
+        setIsAdminUser(false);
+        setLoading(false);
+        return;
+      }
+
+      const adminStatus = await isAdmin(session.user.id);
+      setIsAdminUser(adminStatus);
+      
+      if (adminStatus) {
+        await loadData();
+      }
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+      setIsAdminUser(false);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  if (!currentUser || currentUser.role !== 'admin') {
+  const loadData = async () => {
+    try {
+      // Load users with creator role
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, name, business_name');
+      
+      if (profilesData) {
+        setUsers(profilesData);
+      }
+
+      // Load all games with profile information
+      const { data: gamesData } = await supabase
+        .from('games')
+        .select(`
+          id,
+          title,
+          category,
+          price,
+          status,
+          created_at,
+          user_id,
+          profiles!games_user_id_fkey (
+            id,
+            name,
+            business_name
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (gamesData) {
+        setGames(gamesData as any);
+      }
+    } catch (error) {
+      console.error('Error loading data:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudieron cargar los datos',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <Layout>
+        <div className="flex items-center justify-center min-h-screen">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+            <p className="mt-4 text-muted-foreground">Verificando permisos...</p>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
+  if (isAdminUser === false) {
     return <Navigate to="/login" />;
   }
 
-  const handleApprove = (gameId: string) => {
-    const allGames = getGames();
-    const index = allGames.findIndex(g => g.id === gameId);
-    
-    if (index !== -1) {
-      allGames[index].status = 'approved';
-      saveGames(allGames);
-      loadData();
+  const handleApprove = async (gameId: string) => {
+    try {
+      const { error } = await supabase
+        .from('games')
+        .update({ status: 'approved' })
+        .eq('id', gameId);
+
+      if (error) throw error;
+
+      await loadData();
       
       toast({
         title: 'Juego aprobado',
         description: 'El juego ha sido aprobado y ahora es visible',
       });
+    } catch (error) {
+      console.error('Error approving game:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo aprobar el juego',
+        variant: 'destructive',
+      });
     }
   };
 
-  const handleReject = (gameId: string) => {
-    const allGames = getGames();
-    const index = allGames.findIndex(g => g.id === gameId);
-    
-    if (index !== -1) {
-      allGames[index].status = 'rejected';
-      saveGames(allGames);
-      loadData();
+  const handleReject = async (gameId: string) => {
+    try {
+      const { error } = await supabase
+        .from('games')
+        .update({ status: 'rejected' })
+        .eq('id', gameId);
+
+      if (error) throw error;
+
+      await loadData();
       
       toast({
         title: 'Juego rechazado',
         description: 'El juego ha sido rechazado',
+        variant: 'destructive',
+      });
+    } catch (error) {
+      console.error('Error rejecting game:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo rechazar el juego',
         variant: 'destructive',
       });
     }
@@ -144,12 +256,12 @@ export default function AdminDashboard() {
                   </TableHeader>
                   <TableBody>
                     {pendingGames.map((game) => {
-                      const studio = users.find(u => u.id === game.userId);
+                      const studio = game.profiles as Profile;
                       return (
                         <TableRow key={game.id}>
-                          <TableCell className="font-medium">{game.name}</TableCell>
-                          <TableCell>{studio?.businessName}</TableCell>
-                          <TableCell>{new Date(game.createdAt).toLocaleDateString()}</TableCell>
+                          <TableCell className="font-medium">{game.title}</TableCell>
+                          <TableCell>{studio?.business_name || studio?.name}</TableCell>
+                          <TableCell>{new Date(game.created_at).toLocaleDateString()}</TableCell>
                           <TableCell>
                             <Badge variant="secondary">Pendiente</Badge>
                           </TableCell>
@@ -206,13 +318,13 @@ export default function AdminDashboard() {
                 </TableHeader>
                 <TableBody>
                   {games.map((game) => {
-                    const studio = users.find(u => u.id === game.userId);
+                    const studio = game.profiles as Profile;
                     return (
                       <TableRow key={game.id}>
-                        <TableCell className="font-medium">{game.name}</TableCell>
-                        <TableCell>{studio?.businessName}</TableCell>
+                        <TableCell className="font-medium">{game.title}</TableCell>
+                        <TableCell>{studio?.business_name || studio?.name}</TableCell>
                         <TableCell>{game.category}</TableCell>
-                        <TableCell>Bs. {game.price}</TableCell>
+                        <TableCell>Bs. {game.price || 0}</TableCell>
                         <TableCell>
                           <Badge
                             variant={
@@ -251,12 +363,12 @@ export default function AdminDashboard() {
                 </TableHeader>
                 <TableBody>
                   {users.map((user) => {
-                    const userGames = games.filter(g => g.userId === user.id);
+                    const userGames = games.filter(g => g.user_id === user.id);
                     return (
                       <TableRow key={user.id}>
                         <TableCell className="font-medium">{user.name}</TableCell>
-                        <TableCell>{user.email}</TableCell>
-                        <TableCell>{user.businessName}</TableCell>
+                        <TableCell>{user.email || 'N/A'}</TableCell>
+                        <TableCell>{user.business_name || 'N/A'}</TableCell>
                         <TableCell className="text-right">
                           <Badge variant="secondary">{userGames.length}</Badge>
                         </TableCell>
