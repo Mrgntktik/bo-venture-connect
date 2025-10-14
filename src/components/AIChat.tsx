@@ -10,7 +10,11 @@ type Message = {
   content: string;
 };
 
-export function AIChat() {
+interface AIChatProps {
+  compact?: boolean;
+}
+
+export function AIChat({ compact = false }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -122,6 +126,83 @@ export function AIChat() {
       handleSend();
     }
   };
+
+  if (compact) {
+    return (
+      <div className="flex flex-col h-full">
+        <ScrollArea className="flex-1 p-4" ref={scrollRef}>
+          <div className="space-y-4">
+            {messages.length === 0 && (
+              <div className="text-center text-muted-foreground py-8">
+                <Bot className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">¡Hola! ¿En qué puedo ayudarte?</p>
+              </div>
+            )}
+            
+            {messages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex gap-2 ${
+                  msg.role === "user" ? "justify-end" : "justify-start"
+                }`}
+              >
+                {msg.role === "assistant" && (
+                  <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                    <Bot className="w-3 h-3" />
+                  </div>
+                )}
+                <div
+                  className={`rounded-lg px-3 py-2 max-w-[85%] text-sm ${
+                    msg.role === "user"
+                      ? "bg-blue-600 text-white"
+                      : "bg-muted"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                </div>
+                {msg.role === "user" && (
+                  <div className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center flex-shrink-0">
+                    <User className="w-3 h-3 text-white" />
+                  </div>
+                )}
+              </div>
+            ))}
+            
+            {isLoading && messages[messages.length - 1]?.role === "user" && (
+              <div className="flex gap-2 justify-start">
+                <div className="w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <Bot className="w-3 h-3" />
+                </div>
+                <div className="rounded-lg px-3 py-2 bg-muted">
+                  <div className="flex gap-1">
+                    <span className="w-1.5 h-1.5 bg-foreground/50 rounded-full animate-bounce" />
+                    <span className="w-1.5 h-1.5 bg-foreground/50 rounded-full animate-bounce delay-100" />
+                    <span className="w-1.5 h-1.5 bg-foreground/50 rounded-full animate-bounce delay-200" />
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+
+        <div className="p-3 border-t bg-background">
+          <div className="flex gap-2">
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder="Escribe tu mensaje..."
+              disabled={isLoading}
+              className="flex-1 text-sm"
+            />
+            <Button onClick={handleSend} disabled={isLoading || !input.trim()} size="sm">
+              <Send className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <Card className="flex flex-col h-[600px] w-full max-w-2xl mx-auto">

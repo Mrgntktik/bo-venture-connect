@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ChatBubble } from "@/components/ChatBubble";
 import Home from "./pages/Home";
 import Register from "./pages/Register";
 import Login from "./pages/Login";
@@ -31,6 +32,7 @@ const App = () => {
         <Route path="/ai-chat" element={<AIAssistant />} />
         <Route path="*" element={<NotFound />} />
           </Routes>
+          <ChatBubble />
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider>
