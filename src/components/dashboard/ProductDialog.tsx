@@ -5,20 +5,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Game, getGames, saveGames } from '@/lib/mockData';
+import { createGame, updateGame, addGameImage, deleteGameImage } from '@/lib/supabase-games';
 import { useToast } from '@/hooks/use-toast';
 
 interface ProductDialogProps {
   open: boolean;
   onClose: () => void;
   userId: string;
-  game?: Game | null;
+  game?: any | null;
 }
 
 export const ProductDialog = ({ open, onClose, userId, game }: ProductDialogProps) => {
   const { toast } = useToast();
+  const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
-    name: '',
+    title: '',
     description: '',
     price: '',
     category: '',
@@ -27,16 +28,19 @@ export const ProductDialog = ({ open, onClose, userId, game }: ProductDialogProp
 
   useEffect(() => {
     if (game) {
+      const primaryImage = game.game_images?.find((img: any) => img.is_primary)?.image_url || 
+                           game.game_images?.[0]?.image_url || '';
+      
       setFormData({
-        name: game.name,
-        description: game.description,
-        price: game.price.toString(),
-        category: game.category,
-        imageUrl: game.images[0]
+        title: game.title || '',
+        description: game.description || '',
+        price: game.price?.toString() || '',
+        category: game.category || '',
+        imageUrl: primaryImage
       });
     } else {
       setFormData({
-        name: '',
+        title: '',
         description: '',
         price: '',
         category: '',
@@ -45,46 +49,60 @@ export const ProductDialog = ({ open, onClose, userId, game }: ProductDialogProp
     }
   }, [game, open]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsLoading(true);
     
-    const allGames = getGames();
-    
-    if (game) {
-      const index = allGames.findIndex(g => g.id === game.id);
-      if (index !== -1) {
-        allGames[index] = {
-          ...allGames[index],
-          name: formData.name,
+    try {
+      if (game) {
+        // Actualizar juego existente
+        await updateGame(game.id, {
+          title: formData.title,
           description: formData.description,
           price: parseFloat(formData.price),
           category: formData.category,
-          images: [formData.imageUrl || allGames[index].images[0]]
-        };
+        });
+
+        // Actualizar imagen si cambió
+        if (formData.imageUrl && game.game_images?.length > 0) {
+          const oldImageId = game.game_images[0].id;
+          await deleteGameImage(oldImageId);
+          await addGameImage(game.id, formData.imageUrl, true);
+        } else if (formData.imageUrl) {
+          await addGameImage(game.id, formData.imageUrl, true);
+        }
+      } else {
+        // Crear nuevo juego
+        const newGame = await createGame({
+          title: formData.title,
+          description: formData.description,
+          category: formData.category,
+          price: parseFloat(formData.price),
+          user_id: userId,
+        });
+
+        // Agregar imagen
+        if (formData.imageUrl) {
+          await addGameImage(newGame.id, formData.imageUrl, true);
+        }
       }
-    } else {
-      const newGame: Game = {
-        id: `g${Date.now()}`,
-        userId,
-        name: formData.name,
-        description: formData.description,
-        price: parseFloat(formData.price),
-        category: formData.category,
-        images: [formData.imageUrl || 'https://images.unsplash.com/photo-1550745165-9bc0b252726f'],
-        status: 'pending',
-        createdAt: new Date().toISOString()
-      };
-      allGames.push(newGame);
+      
+      toast({
+        title: game ? 'Juego actualizado' : 'Juego creado',
+        description: game ? 'El juego se actualizó correctamente' : 'El juego se creó y está pendiente de aprobación',
+      });
+      
+      onClose();
+    } catch (error) {
+      console.error('Error saving game:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo guardar el juego',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
     }
-    
-    saveGames(allGames);
-    
-    toast({
-      title: game ? 'Juego actualizado' : 'Juego creado',
-      description: game ? 'El juego se actualizó correctamente' : 'El juego se creó y está pendiente de aprobación',
-    });
-    
-    onClose();
   };
 
   return (
@@ -96,12 +114,13 @@ export const ProductDialog = ({ open, onClose, userId, game }: ProductDialogProp
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Nombre del Juego</Label>
+            <Label htmlFor="title">Nombre del Juego</Label>
             <Input
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              id="title"
+              value={formData.title}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -113,6 +132,7 @@ export const ProductDialog = ({ open, onClose, userId, game }: ProductDialogProp
               onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
               required
+              disabled={isLoading}
             />
           </div>
 
@@ -125,6 +145,7 @@ export const ProductDialog = ({ open, onClose, userId, game }: ProductDialogProp
                 value={formData.price}
                 onChange={(e) => setFormData({ ...formData, price: e.target.value })}
                 required
+                disabled={isLoading}
               />
             </div>
 
@@ -133,6 +154,7 @@ export const ProductDialog = ({ open, onClose, userId, game }: ProductDialogProp
               <Select
                 value={formData.category}
                 onValueChange={(value) => setFormData({ ...formData, category: value })}
+                disabled={isLoading}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Selecciona una categoría" />
@@ -157,15 +179,16 @@ export const ProductDialog = ({ open, onClose, userId, game }: ProductDialogProp
               value={formData.imageUrl}
               onChange={(e) => setFormData({ ...formData, imageUrl: e.target.value })}
               placeholder="https://..."
+              disabled={isLoading}
             />
           </div>
 
           <div className="flex gap-2 justify-end">
-            <Button type="button" variant="outline" onClick={onClose}>
+            <Button type="button" variant="outline" onClick={onClose} disabled={isLoading}>
               Cancelar
             </Button>
-            <Button type="submit">
-              {game ? 'Actualizar' : 'Crear Juego'}
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? 'Guardando...' : game ? 'Actualizar' : 'Crear Juego'}
             </Button>
           </div>
         </form>

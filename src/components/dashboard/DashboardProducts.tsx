@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Plus, Pencil, Trash2 } from 'lucide-react';
-import { Game, getGames, saveGames } from '@/lib/mockData';
+import { getGamesByUser, deleteGame, type Game } from '@/lib/supabase-games';
 import { ProductDialog } from './ProductDialog';
 import { useToast } from '@/hooks/use-toast';
 
@@ -11,30 +11,50 @@ interface DashboardProductsProps {
 }
 
 export const DashboardProducts = ({ userId }: DashboardProductsProps) => {
-  const [games, setGames] = useState<Game[]>([]);
+  const [games, setGames] = useState<any[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingGame, setEditingGame] = useState<Game | null>(null);
+  const [editingGame, setEditingGame] = useState<any | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const { toast } = useToast();
 
   useEffect(() => {
     loadGames();
   }, [userId]);
 
-  const loadGames = () => {
-    const allGames = getGames();
-    setGames(allGames.filter(g => g.userId === userId));
+  const loadGames = async () => {
+    try {
+      setIsLoading(true);
+      const data = await getGamesByUser(userId);
+      setGames(data || []);
+    } catch (error) {
+      console.error('Error loading games:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudieron cargar los juegos',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleDelete = (gameId: string) => {
-    const allGames = getGames();
-    const updated = allGames.filter(g => g.id !== gameId);
-    saveGames(updated);
-    loadGames();
-    
-    toast({
-      title: 'Juego eliminado',
-      description: 'El juego ha sido eliminado correctamente',
-    });
+  const handleDelete = async (gameId: string) => {
+    try {
+      await deleteGame(gameId);
+      await loadGames();
+      
+      toast({
+        title: 'Juego eliminado',
+        description: 'El juego ha sido eliminado correctamente',
+      });
+    } catch (error) {
+      console.error('Error deleting game:', error);
+      toast({
+        title: 'Error',
+        description: 'No se pudo eliminar el juego',
+        variant: 'destructive',
+      });
+    }
   };
 
   const handleEdit = (game: Game) => {
@@ -59,29 +79,34 @@ export const DashboardProducts = ({ userId }: DashboardProductsProps) => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {games.map((game) => (
-          <Card key={game.id} className="shadow-card hover:shadow-elevated transition-smooth overflow-hidden">
-            <div className="aspect-video bg-muted relative">
-              <img 
-                src={game.images[0]} 
-                alt={game.name}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute top-2 right-2">
-                <span className={`px-3 py-1 rounded-full text-xs font-medium ${
-                  game.status === 'approved' ? 'bg-primary text-primary-foreground' :
-                  game.status === 'rejected' ? 'bg-destructive text-destructive-foreground' :
-                  'bg-secondary text-secondary-foreground'
-                }`}>
-                  {game.status === 'approved' ? 'Aprobado' :
-                   game.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
-                </span>
+        {games.map((game) => {
+          const primaryImage = game.game_images?.find((img: any) => img.is_primary)?.image_url || 
+                               game.game_images?.[0]?.image_url || 
+                               'https://images.unsplash.com/photo-1550745165-9bc0b252726f';
+          
+          return (
+            <Card key={game.id} className="shadow-card hover:shadow-elevated transition-smooth overflow-hidden">
+              <div className="aspect-video bg-muted relative">
+                <img 
+                  src={primaryImage} 
+                  alt={game.title}
+                  className="w-full h-full object-cover"
+                />
+                <div className="absolute top-2 right-2">
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ${
+                    game.status === 'approved' ? 'bg-primary text-primary-foreground' :
+                    game.status === 'rejected' ? 'bg-destructive text-destructive-foreground' :
+                    'bg-secondary text-secondary-foreground'
+                  }`}>
+                    {game.status === 'approved' ? 'Aprobado' :
+                     game.status === 'rejected' ? 'Rechazado' : 'Pendiente'}
+                  </span>
+                </div>
               </div>
-            </div>
-            <CardContent className="p-4">
-              <h3 className="font-bold text-lg mb-1">{game.name}</h3>
-              <p className="text-sm text-muted-foreground mb-2">{game.category}</p>
-              <p className="text-xl font-bold text-primary mb-4">Bs. {game.price}</p>
+              <CardContent className="p-4">
+                <h3 className="font-bold text-lg mb-1">{game.title}</h3>
+                <p className="text-sm text-muted-foreground mb-2">{game.category}</p>
+                <p className="text-xl font-bold text-primary mb-4">Bs. {game.price || 0}</p>
               
               <div className="flex gap-2">
                 <Button
@@ -105,7 +130,8 @@ export const DashboardProducts = ({ userId }: DashboardProductsProps) => {
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       {games.length === 0 && (
